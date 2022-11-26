@@ -1,200 +1,169 @@
 package lexer
 
-import "togo/token"
+import (
+	"errors"
+	"strings"
+	"unicode/utf8"
+)
 
-type Lexer struct {
-	input        []rune
-	position     int
-	readPosition int
-	ch           rune
+// https://go.dev/talks/2011/lex.slide#1
+
+type StateFunc func(*L) StateFunc
+
+type TokenType int
+
+type Token struct {
+	Type  TokenType
+	Value string
 }
 
-func New(input string) *Lexer {
-	l := &Lexer{input: []rune(input)}
-	l.readChar()
-	return l
+type L struct {
+	source          string
+	start, position int
+	startState      StateFunc
+	Err             error
+	tokens          chan Token
+	ErrorHandler    func(e string)
+	rewind          runeStack
 }
 
-func (l *Lexer) readChar() {
-	if l.readPosition >= len(l.input) {
-		l.ch = 0
-	} else {
-		l.ch = l.input[l.readPosition]
+// New creates a returns a lexer ready to parse the given source code.
+func New(src string, start StateFunc) *L {
+	return &L{
+		source:     src,
+		startState: start,
+		start:      0,
+		position:   0,
+		rewind:     newRuneStack(),
 	}
-	l.position = l.readPosition
-	l.readPosition += 1
 }
 
-func (l *Lexer) NextToken() token.Token {
-	var tok token.Token
-	switch l.ch {
-	case '+':
-		tok = newToken(token.ADD, l.ch)
-	case '-':
-		tok = newToken(token.SUB, l.ch)
-	case '*':
-		tok = newToken(token.MUL, l.ch)
-	case '/':
-		tok = newToken(token.QUO, l.ch)
-	case '%':
-		tok = newToken(token.REM, l.ch)
-	case '&':
-		tok = newToken(token.AND, l.ch)
-	case '|':
-		tok = newToken(token.OR, l.ch)
-	case '^':
-		tok = newToken(token.XOR, l.ch)
-	case '<':
-		tok = newToken(token.LSS, l.ch)
-	case '>':
-		tok = newToken(token.GTR, l.ch)
-	case '=':
-		tok = newToken(token.ASSIGN, l.ch)
-	case '!':
-		tok = newToken(token.NOT, l.ch)
-	case '(':
-		tok = newToken(token.LPAREN, l.ch)
-	case '[':
-		tok = newToken(token.LBRACK, l.ch)
-	case '{':
-		tok = newToken(token.LBRACE, l.ch)
-	case ',':
-		tok = newToken(token.COMMA, l.ch)
-	case '.':
-		tok = newToken(token.PERIOD, l.ch)
-	case ')':
-		tok = newToken(token.RPAREN, l.ch)
-	case ']':
-		tok = newToken(token.RBRACK, l.ch)
-	case '}':
-		tok = newToken(token.RBRACE, l.ch)
-	case ';':
-		tok = newToken(token.SEMICOLON, l.ch)
-	case '~':
-		tok = newToken(token.TILDE, l.ch)
-	//case '!=':
-	//	tok = newToken(token.NEQ, l.ch)
-	//case '<=':
-	//	tok = newToken(token.LEQ, l.ch)
-	//case '>=':
-	//	tok = newToken(token.GEQ, l.ch)
-	//case ':=':
-	//	tok = newToken(token.DEFINE, l.ch)
-	//case '...':
-	//	tok = newToken(token.ELLIPSIS, l.ch)
-	//case 'ILLEGAL':
-	//	tok = newToken(token.ILLEGAL, l.ch)
-	//case 'EOF':
-	//	tok = newToken(token.EOF, l.ch)
-	//case 'COMMENT':
-	//	tok = newToken(token.COMMENT, l.ch)
-	//case 'IDENT':
-	//	tok = newToken(token.IDENT, l.ch)
-	//case 'INT':
-	//	tok = newToken(token.INT, l.ch)
-	//case 'FLOAT':
-	//	tok = newToken(token.FLOAT, l.ch)
-	//case 'IMAG':
-	//	tok = newToken(token.IMAG, l.ch)
-	//case 'CHAR':
-	//	tok = newToken(token.CHAR, l.ch)
-	//case 'STRING':
-	//	tok = newToken(token.STRING, l.ch)
-	//case '<<':
-	//	tok = newToken(token.SHL, l.ch)
-	//case '>>':
-	//	tok = newToken(token.SHR, l.ch)
-	//case '&&':
-	//	tok = newToken(token.LAND, l.ch)
-	//case '||':
-	//	tok = newToken(token.LOR, l.ch)
-	//case '<-':
-	//	tok = newToken(token.ARROW, l.ch)
-	//case '++':
-	//	tok = newToken(token.INC, l.ch)
-	//case '--':
-	//	tok = newToken(token.DEC, l.ch)
-	//case '==':
-	//	tok = newToken(token.EQL, l.ch)
-	//case ':':
-	//	tok = newToken(token.COLON, l.ch)
-	//case 'break':
-	//	tok = newToken(token.BREAK, l.ch)
-	//case 'case':
-	//	tok = newToken(token.CASE, l.ch)
-	//case 'chan':
-	//	tok = newToken(token.CHAN, l.ch)
-	//case 'const':
-	//	tok = newToken(token.CONST, l.ch)
-	//case 'continue':
-	//	tok = newToken(token.CONTINUE, l.ch)
-	//case 'default':
-	//	tok = newToken(token.DEFAULT, l.ch)
-	//case 'defer':
-	//	tok = newToken(token.DEFER, l.ch)
-	//case 'else':
-	//	tok = newToken(token.ELSE, l.ch)
-	//case 'fallthrough':
-	//	tok = newToken(token.FALLTHROUGH, l.ch)
-	//case 'for':
-	//	tok = newToken(token.FOR, l.ch)
-	//case 'func':
-	//	tok = newToken(token.FUNC, l.ch)
-	//case 'go':
-	//	tok = newToken(token.GO, l.ch)
-	//case 'goto':
-	//	tok = newToken(token.GOTO, l.ch)
-	//case 'if':
-	//	tok = newToken(token.IF, l.ch)
-	//case 'import':
-	//	tok = newToken(token.IMPORT, l.ch)
-	//case 'interface':
-	//	tok = newToken(token.INTERFACE, l.ch)
-	//case 'map':
-	//	tok = newToken(token.MAP, l.ch)
-	//case 'package':
-	//	tok = newToken(token.PACKAGE, l.ch)
-	//case 'range':
-	//	tok = newToken(token.RANGE, l.ch)
-	//case 'return':
-	//	tok = newToken(token.RETURN, l.ch)
-	//case 'select':
-	//	tok = newToken(token.SELECT, l.ch)
-	//case 'struct':
-	//	tok = newToken(token.STRUCT, l.ch)
-	//case 'switch':
-	//	tok = newToken(token.SWITCH, l.ch)
-	//case 'type':
-	//	tok = newToken(token.TYPE, l.ch)
-	//case 'var':
-	//	tok = newToken(token.VAR, l.ch)
-	case 0:
-		tok.Literal = ""
-		tok.Type = token.EOF
-	default:
-		if isLetter(l.ch) {
-			tok.Literal = l.readIdentifier()
-			return tok
-		} else {
-			tok = newToken(token.ILLEGAL, l.ch)
+// Start begins executing the Lexer in an asynchronous manner (using a goroutine).
+func (l *L) Start() {
+	// Take half the string length as a buffer size.
+	buffSize := len(l.source) / 2
+	if buffSize <= 0 {
+		buffSize = 1
+	}
+	l.tokens = make(chan Token, buffSize)
+	go l.run()
+}
+
+func (l *L) StartSync() {
+	// Take half the string length as a buffer size.
+	buffSize := len(l.source) / 2
+	if buffSize <= 0 {
+		buffSize = 1
+	}
+	l.tokens = make(chan Token, buffSize)
+	l.run()
+}
+
+// Current returns the value being being analyzed at this moment.
+func (l *L) Current() string {
+	return l.source[l.start:l.position]
+}
+
+// Emit will receive a token type and push a new token with the current analyzed
+// value into the tokens channel.
+func (l *L) Emit(t TokenType) {
+	tok := Token{
+		Type:  t,
+		Value: l.Current(),
+	}
+	l.tokens <- tok
+	l.start = l.position
+	l.rewind.clear()
+}
+
+// Ignore clears the rewind stack and then sets the current beginning position
+// to the current position in the source which effectively ignores the section
+// of the source being analyzed.
+func (l *L) Ignore() {
+	l.rewind.clear()
+	l.start = l.position
+}
+
+// Peek performs a Next operation immediately followed by a Rewind returning the
+// peeked rune.
+func (l *L) Peek() rune {
+	r := l.Next()
+	l.Rewind()
+
+	return r
+}
+
+// Rewind will take the last rune read (if any) and rewind back. Rewinds can
+// occur more than once per call to Next but you can never rewind past the
+// last point a token was emitted.
+func (l *L) Rewind() {
+	r := l.rewind.pop()
+	if r > EOF {
+		size := utf8.RuneLen(r)
+		l.position -= size
+		if l.position < l.start {
+			l.position = l.start
 		}
 	}
-	l.readChar()
-	return tok
 }
 
-func (l *Lexer) readIdentifier() string {
-	startPosition := l.position
-	for isLetter(l.ch) {
-		l.readChar()
+// Next pulls the next rune from the Lexer and returns it, moving the position
+// forward in the source.
+func (l *L) Next() rune {
+	var (
+		r rune
+		s int
+	)
+	str := l.source[l.position:]
+	if len(str) == 0 {
+		r, s = EOF, 0
+	} else {
+		r, s = utf8.DecodeRuneInString(str)
 	}
-	return string(l.input[startPosition:l.position])
+	l.position += s
+	l.rewind.push(r)
+
+	return r
 }
 
-func newToken(tokenType token.Toke, ch rune) token.Token {
-	return token.Token{Type: tokenType, Literal: string(ch)}
+// Take receives a string containing all acceptable strings and will continue
+// over each consecutive character in the source until a token not in the given
+// string is encountered. This should be used to quickly pull token parts.
+func (l *L) Take(chars string) {
+	r := l.Next()
+	for strings.ContainsRune(chars, r) {
+		r = l.Next()
+	}
+	l.Rewind() // last next wasn't a match
 }
 
-func isLetter(ch rune) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+// NextToken returns the next token from the lexer and a value to denote whether
+// or not the token is finished.
+func (l *L) NextToken() (*Token, bool) {
+	if tok, ok := <-l.tokens; ok {
+		return &tok, false
+	} else {
+		return nil, true
+	}
+}
+
+// Partial yyLexer implementation
+
+func (l *L) Error(e string) {
+	if l.ErrorHandler != nil {
+		l.Err = errors.New(e)
+		l.ErrorHandler(e)
+	} else {
+		panic(e)
+	}
+}
+
+// Private methods
+
+func (l *L) run() {
+	state := l.startState
+	for state != nil {
+		state = state(l)
+	}
+	close(l.tokens)
 }

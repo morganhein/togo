@@ -1,3 +1,3 @@
-module togo
+module github.com/morganhein/togo
 
 go 1.19
